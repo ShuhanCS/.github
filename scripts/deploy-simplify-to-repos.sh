@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy the claude-simplify caller workflow to all active ShuhanCS repos.
+# Deploy the claude-simplify caller workflow to ShuhanCS repos.
 # Usage: bash scripts/deploy-simplify-to-repos.sh [repo1 repo2 ...]
 # No args = deploy to all repos updated since 2026-02-01.
 set -euo pipefail
@@ -30,22 +30,29 @@ else
     --jq '.[] | select(.updatedAt > "2026-02-01") | .name')
 fi
 
+API_KEY="${ANTHROPIC_API_KEY:-}"
+
 for repo in "${REPOS[@]}"; do
   [ "$repo" = ".github" ] && continue
-  echo "--- $repo ---"
+  echo "--- ShuhanCS/$repo ---"
 
+  # Check if file already exists
   if gh api "repos/ShuhanCS/$repo/contents/$CALLER" --jq '.name' 2>/dev/null; then
-    echo "  Already has claude-simplify.yml, skipping"
-    continue
+    echo "  Already has claude-simplify.yml, skipping workflow"
+  else
+    ENCODED=$(printf '%s' "$CALLER_CONTENT" | base64 -w 0)
+    gh api --method PUT "repos/ShuhanCS/$repo/contents/$CALLER" \
+      -f message="ci: add Claude Code Simplifier workflow" \
+      -f content="$ENCODED" \
+      --silent 2>/dev/null && echo "  Workflow deployed" || echo "  Workflow failed"
   fi
 
-  ENCODED=$(printf '%s' "$CALLER_CONTENT" | base64 -w 0)
-  gh api --method PUT "repos/ShuhanCS/$repo/contents/$CALLER" \
-    -f message="ci: add Claude Code Simplifier workflow" \
-    -f content="$ENCODED" \
-    --silent 2>/dev/null && echo "  Deployed" || echo "  Failed (may need write access)"
+  # Set repo-level secret if API key provided
+  if [ -n "$API_KEY" ]; then
+    echo "$API_KEY" | gh secret set ANTHROPIC_API_KEY -R "ShuhanCS/$repo" 2>/dev/null \
+      && echo "  Secret set" || echo "  Secret failed"
+  fi
 done
 
 echo ""
-echo "Done. Make sure ANTHROPIC_API_KEY is set as an org secret:"
-echo "  gh secret set ANTHROPIC_API_KEY --org ShuhanCS --visibility all"
+echo "Done."
