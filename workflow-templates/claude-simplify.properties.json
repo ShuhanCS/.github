@@ -1,0 +1,6 @@
+{
+  "name": "Claude Code Simplifier",
+  "description": "Runs Claude Code to review PR changes for reuse, quality, and efficiency.",
+  "iconName": "octicon code-review",
+  "categories": ["Code quality"]
+}

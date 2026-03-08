@@ -1,0 +1,52 @@
+name: Claude Code Simplifier
+
+on:
+  workflow_call:
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  simplify:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && !contains(github.head_ref, 'review/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' '*.js' '*.ts' '*.tsx' '*.jsx' '*.php' '*.css' '*.html' | head -50)
+          if [ -z "$FILES" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Claude Code Simplify Review
+        if: steps.changed.outputs.skip != 'true'
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are a code simplifier reviewing a pull request. Analyze the changed files in this PR and post review comments for any issues you find.
+
+            Focus ONLY on:
+            1. **Reuse**: Duplicated logic that should be extracted or that duplicates existing utilities in the codebase
+            2. **Quality**: Bugs, security issues, missing error handling at system boundaries, unclear naming
+            3. **Efficiency**: Unnecessary complexity, over-engineering, premature abstractions, dead code
+
+            Do NOT comment on:
+            - Style preferences or formatting (leave that to linters)
+            - Adding docstrings or type annotations to unchanged code
+            - Hypothetical future improvements
+            - Things that are already clean and working
+
+            Be concise. Only comment when there's a real, actionable improvement. If the code is clean, say so briefly and approve.
+            Prefix every comment with **[Claude Simplify]** so it's clear this is automated.
